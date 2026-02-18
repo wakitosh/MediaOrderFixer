@@ -1,0 +1,384 @@
+<?php
+/** @var string $strategy */
+/** @var array $strategyOptions */
+/** @var string $identifiersText */
+/** @var array|null $preview */
+/** @var string $siteSlug */
+/** @var array $siteSlugs */
+
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+$escapeAttr = $this->plugin('escapeHtmlAttr');
+
+$strategy = (string) ($strategy ?? 'padded_first');
+$strategyOptions = is_array($strategyOptions ?? NULL) ? $strategyOptions : [];
+$identifiersText = (string) ($identifiersText ?? '');
+$preview = is_array($preview ?? NULL) ? $preview : NULL;
+$siteSlug = trim((string) ($siteSlug ?? ''));
+$siteSlugs = is_array($siteSlugs ?? NULL) ? $siteSlugs : [];
+
+$csrfName = '';
+$csrfValue = '';
+if (isset($confirmForm)) {
+  $csrfElement = $confirmForm->get($confirmForm->getName() . '_csrf');
+  $csrfName = (string) $csrfElement->getName();
+  $csrfValue = (string) $csrfElement->getValue();
+}
+?>
+
+<?= $this->pageTitle($translate('Media Order Fixer')) ?>
+
+<style>
+  .mof-section { margin-bottom: 1rem; }
+  .mof-box { border: 1px solid #ddd; background: #fafafa; padding: 1rem; border-radius: 4px; }
+  .mof-table { table-layout: fixed; width: 100%; }
+  .mof-table td { vertical-align: top; }
+  .mof-col-apply { width: 46px; }
+  .mof-col-item { width: 220px; }
+  .mof-col-status { width: 150px; }
+  .mof-col-public { width: 64px; text-align: center; }
+  .mof-col-sample { width: calc((100% - 480px) / 2); min-width: 420px; }
+  .mof-cell-apply { text-align: center; }
+  .mof-cell-item, .mof-cell-status { line-height: 1.35; }
+  .mof-primary-note {
+    display: block;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .mof-cell-samples { overflow: hidden; }
+  .mof-samples {
+    display: grid;
+    grid-template-columns: repeat(4, 100px);
+    gap: .5rem;
+    align-items: start;
+  }
+  .mof-sample { width: 100px; }
+  .mof-sample .mof-num { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  .mof-sample img { width: 100px; height: 100px; object-fit: cover; display:block; border:1px solid #ddd; }
+  .mof-sample .mof-label {
+    font-size: 11px;
+    word-break: break-all;
+    line-height: 1.25;
+    min-height: 2.6em;
+  }
+  .mof-row-eligible-0 { background: #fff7f7; }
+  .mof-row-eligible-1.mof-row-changed-0 { background: #f8fff8; }
+  .mof-muted { color: #666; font-size: 12px; }
+</style>
+
+<div class="mof-section mof-box">
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="mode" value="preview">
+    <div class="field">
+      <div class="field-meta">
+        <label for="mof-identifiers"><?= $escape($translate('Item identifiers list')) ?></label>
+      </div>
+      <div class="inputs">
+        <textarea id="mof-identifiers" name="identifiers_text" rows="8" style="width:100%; font-family: monospace;"><?= $escape($identifiersText) ?></textarea>
+        <p class="mof-muted"><?= $escape($translate('Paste item IDs / identifiers (newline, space, or comma separated).')) ?></p>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-meta">
+        <label for="mof-file"><?= $escape($translate('Or upload text file')) ?></label>
+      </div>
+      <div class="inputs">
+        <input id="mof-file" type="file" name="identifiers_file" accept=".txt,.csv,text/plain">
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-meta">
+        <label for="mof-strategy"><?= $escape($translate('Reorder strategy')) ?></label>
+      </div>
+      <div class="inputs">
+        <select id="mof-strategy" name="strategy">
+          <?php foreach ($strategyOptions as $key => $label): ?>
+            <option value="<?= $escapeAttr((string) $key) ?>" <?= ((string) $key === $strategy) ? 'selected' : '' ?>><?= $escape((string) $label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+    </div>
+
+    <button type="submit" class="button"><?= $escape($translate('Review candidates')) ?></button>
+  </form>
+</div>
+
+<?php if ($preview): ?>
+  <?php $rows = is_array($preview['rows'] ?? NULL) ? $preview['rows'] : []; ?>
+  <?php
+  $previewToken = (string) ($preview['token'] ?? '');
+  $reviewPage = max(1, (int) ($preview['page'] ?? 1));
+  $reviewPages = max(1, (int) ($preview['pages'] ?? 1));
+  $reviewPerPage = max(10, (int) ($preview['per_page'] ?? 50));
+  $reviewTotalRows = max(0, (int) ($preview['total_rows'] ?? count($rows)));
+  $pagerUrl = function (int $page, ?int $perPage = NULL) use ($previewToken, $reviewPerPage, $siteSlug) {
+    $query = [
+      'preview_token' => $previewToken,
+      'review_page' => max(1, $page),
+      'review_per_page' => $perPage ?? $reviewPerPage,
+      'site_slug' => $siteSlug,
+    ];
+    return $this->url('admin/media-order-fixer', [], ['query' => $query]);
+  };
+  ?>
+  <div class="mof-section mof-box">
+    <h3><?= $escape($translate('Review')) ?></h3>
+    <p class="mof-muted">
+      <?= $escape(sprintf($translate('Resolved items: %d'), (int) ($preview['resolved_count'] ?? 0))) ?>
+      / <?= $escape(sprintf($translate('Rows shown: %d / %d'), count($rows), $reviewTotalRows)) ?>
+    </p>
+
+    <?php if ($reviewPages > 1): ?>
+      <div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin-bottom:.75rem;">
+        <a class="button" href="<?= $escapeAttr($pagerUrl(1)) ?>"><?= $escape($translate('First')) ?></a>
+        <a class="button" href="<?= $escapeAttr($pagerUrl(max(1, $reviewPage - 1))) ?>"><?= $escape($translate('Previous')) ?></a>
+        <span><?= $escape(sprintf($translate('Page %d / %d'), $reviewPage, $reviewPages)) ?></span>
+        <a class="button" href="<?= $escapeAttr($pagerUrl(min($reviewPages, $reviewPage + 1))) ?>"><?= $escape($translate('Next')) ?></a>
+        <a class="button" href="<?= $escapeAttr($pagerUrl($reviewPages)) ?>"><?= $escape($translate('Last')) ?></a>
+
+        <form method="get" style="display:flex; gap:.35rem; align-items:center; margin:0 0 0 .5rem;">
+          <input type="hidden" name="preview_token" value="<?= $escapeAttr($previewToken) ?>">
+          <input type="hidden" name="review_page" value="1">
+          <input type="hidden" name="site_slug" value="<?= $escapeAttr($siteSlug) ?>">
+          <label for="mof-review-per-page"><?= $escape($translate('Rows per page')) ?></label>
+          <select id="mof-review-per-page" name="review_per_page">
+            <?php foreach ([25, 50, 100, 200] as $opt): ?>
+              <option value="<?= (int) $opt ?>" <?= ((int) $opt === $reviewPerPage) ? 'selected' : '' ?>><?= (int) $opt ?></option>
+            <?php endforeach; ?>
+          </select>
+          <button type="submit" class="button"><?= $escape($translate('Apply')) ?></button>
+        </form>
+      </div>
+    <?php endif; ?>
+
+    <form method="get" style="display:flex; gap:.35rem; align-items:center; flex-wrap:wrap; margin:0 0 .75rem;">
+      <input type="hidden" name="preview_token" value="<?= $escapeAttr($previewToken) ?>">
+      <input type="hidden" name="review_page" value="1">
+      <input type="hidden" name="review_per_page" value="<?= (int) $reviewPerPage ?>">
+      <label for="mof-site-slug"><?= $escape($translate('Site slug for public links')) ?></label>
+      <select id="mof-site-slug" name="site_slug" style="min-width: 220px;">
+        <option value=""><?= $escape($translate('Auto (first site of each item)')) ?></option>
+        <?php foreach ($siteSlugs as $availableSiteSlug): ?>
+          <?php $availableSiteSlug = trim((string) $availableSiteSlug); ?>
+          <?php if ($availableSiteSlug === '') continue; ?>
+          <option value="<?= $escapeAttr($availableSiteSlug) ?>" <?= $siteSlug === $availableSiteSlug ? 'selected' : '' ?>>
+            <?= $escape($availableSiteSlug) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+      <button type="submit" class="button"><?= $escape($translate('Apply')) ?></button>
+    </form>
+
+    <?php if (!empty($preview['unresolved'])): ?>
+      <p><strong><?= $escape($translate('Unresolved identifiers')) ?>:</strong> <?= $escape(implode(', ', $preview['unresolved'])) ?></p>
+    <?php endif; ?>
+    <?php if (!empty($preview['ambiguous'])): ?>
+      <div>
+        <strong><?= $escape($translate('Ambiguous identifiers')) ?>:</strong>
+        <ul>
+          <?php foreach ($preview['ambiguous'] as $amb): ?>
+            <li>
+              <?= $escape((string) ($amb['token'] ?? '')) ?>
+              -> <?= $escape(implode(', ', array_map('strval', (array) ($amb['item_ids'] ?? [])))) ?>
+            </li>
+          <?php endforeach; ?>
+        </ul>
+      </div>
+    <?php endif; ?>
+
+    <form method="post" action="<?= $escapeAttr($this->url('admin/media-order-fixer/apply')) ?>">
+      <input type="hidden" name="preview_token" value="<?= $escapeAttr((string) ($preview['token'] ?? '')) ?>">
+      <?php if ($csrfName !== ''): ?>
+        <input type="hidden" name="<?= $escapeAttr($csrfName) ?>" value="<?= $escapeAttr($csrfValue) ?>">
+      <?php endif; ?>
+
+      <table class="tablesaw tablesaw-stack mof-table" data-tablesaw-mode="stack">
+        <thead>
+          <tr>
+            <th class="mof-col-apply">
+              <button type="button" class="button" id="mof-toggle-select" style="min-width: 32px; padding-left: .45rem; padding-right: .45rem;" title="<?= $escapeAttr($translate('Select All')) ?>" aria-label="<?= $escapeAttr($translate('Select All')) ?>">
+                ✓
+              </button>
+            </th>
+            <th class="mof-col-item"><?= $escape($translate('Item')) ?></th>
+            <th class="mof-col-status"><?= $escape($translate('Status')) ?></th>
+            <th class="mof-col-sample"><?= $escape($translate('Before (sample)')) ?></th>
+            <th class="mof-col-sample"><?= $escape($translate('After (sample)')) ?></th>
+            <th class="mof-col-public"><?= $escape($translate('Public')) ?></th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($rows as $row): ?>
+            <?php
+            $itemId = (int) ($row['item_id'] ?? 0);
+            $eligible = (bool) ($row['eligible'] ?? FALSE);
+            $changed = (bool) ($row['changed'] ?? FALSE);
+            $checked = $eligible && $changed;
+            $rowClass = 'mof-row-eligible-' . ($eligible ? '1' : '0') . ' mof-row-changed-' . ($changed ? '1' : '0');
+            ?>
+            <tr class="<?= $escapeAttr($rowClass) ?>">
+              <td class="mof-cell-apply">
+                <input
+                  type="checkbox"
+                  name="selected_item_ids[]"
+                  value="<?= (int) $itemId ?>"
+                  <?= $checked ? 'checked' : '' ?>
+                  <?= $eligible ? '' : 'disabled' ?>
+                >
+              </td>
+              <td class="mof-cell-item">
+                <?php
+                $itemTitleFull = (string) ($row['item_title'] ?? '');
+                $itemTitleShort = $itemTitleFull;
+                if (function_exists('mb_strimwidth')) {
+                  $itemTitleShort = mb_strimwidth($itemTitleFull, 0, 50, '...', 'UTF-8');
+                }
+                elseif (strlen($itemTitleFull) > 50) {
+                  $itemTitleShort = substr($itemTitleFull, 0, 47) . '...';
+                }
+                $itemEditUrl = $this->url('admin/id', [
+                  'controller' => 'item',
+                  'action' => 'edit',
+                  'id' => $itemId,
+                ]);
+                ?>
+                <a href="<?= $escapeAttr($itemEditUrl) ?>" target="_blank" rel="noopener" title="<?= $escapeAttr($itemTitleFull) ?>">
+                  #<?= (int) $itemId ?> <?= $escape($itemTitleShort) ?>
+                </a>
+                <div class="mof-muted"><?= $escape(sprintf($translate('Media count: %d'), (int) ($row['media_count'] ?? 0))) ?></div>
+              </td>
+              <td class="mof-cell-status">
+                <?php if ($eligible): ?>
+                  <?= $changed ? $escape($translate('Eligible / will change')) : $escape($translate('Eligible / already ordered')) ?>
+                <?php else: ?>
+                  <?= $escape($translate('Excluded')) ?>
+                  <div class="mof-muted"><?= $escape((string) ($row['reason'] ?? '')) ?></div>
+                <?php endif; ?>
+                <?php $primaryMediaId = (int) ($row['primary_media_id'] ?? 0); ?>
+                <?php if ($primaryMediaId > 0): ?>
+                  <?php $primaryLabel = trim((string) ($row['primary_media_label'] ?? '')); ?>
+                  <div class="mof-muted">
+                    <span class="mof-primary-note">
+                      <?= $escape(sprintf($translate('Primary after apply: #%d'), $primaryMediaId)) ?>
+                      <?= $primaryLabel !== '' ? ' ' . $escape($primaryLabel) : '' ?>
+                    </span>
+                  </div>
+                  <?php if (!empty($row['primary_media_fallback'])): ?>
+                    <div class="mof-muted"><?= $escape($translate('No public media found; fallback to first media.')) ?></div>
+                  <?php endif; ?>
+                <?php endif; ?>
+              </td>
+              <td class="mof-cell-samples">
+                <div class="mof-samples">
+                  <?php foreach ((array) ($row['before'] ?? []) as $index => $sample): ?>
+                    <div class="mof-sample">
+                      <div class="mof-num"><?= (int) $index + 1 ?>.</div>
+                      <?php if (!empty($sample['thumb'])): ?>
+                        <img src="<?= $escapeAttr((string) $sample['thumb']) ?>" alt="">
+                      <?php else: ?>
+                        <div style="width:100px;height:100px;border:1px solid #ddd;background:#f3f3f3;"></div>
+                      <?php endif; ?>
+                      <div class="mof-label" title="<?= $escapeAttr((string) ($sample['label'] ?? '')) ?>">
+                        <?= $escape((string) ($sample['label'] ?? '')) ?>
+                      </div>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+              </td>
+              <td class="mof-cell-samples">
+                <div class="mof-samples">
+                  <?php foreach ((array) ($row['after'] ?? []) as $index => $sample): ?>
+                    <div class="mof-sample">
+                      <div class="mof-num"><?= (int) $index + 1 ?>.</div>
+                      <?php if (!empty($sample['thumb'])): ?>
+                        <img src="<?= $escapeAttr((string) $sample['thumb']) ?>" alt="">
+                      <?php else: ?>
+                        <div style="width:100px;height:100px;border:1px solid #ddd;background:#f3f3f3;"></div>
+                      <?php endif; ?>
+                      <div class="mof-label" title="<?= $escapeAttr((string) ($sample['label'] ?? '')) ?>">
+                        <?= $escape((string) ($sample['label'] ?? '')) ?>
+                      </div>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+              </td>
+              <td class="mof-col-public">
+                <?php $publicItemUrl = trim((string) ($row['public_item_url'] ?? '')); ?>
+                <?php if ($publicItemUrl !== ''): ?>
+                  <a
+                    href="<?= $escapeAttr($publicItemUrl) ?>"
+                    target="_blank"
+                    rel="noopener"
+                    class="o-icon-external"
+                    title="<?= $escapeAttr($translate('View public page')) ?>"
+                    aria-label="<?= $escapeAttr($translate('View public page')) ?>"
+                  ></a>
+                <?php else: ?>
+                  <span>-</span>
+                <?php endif; ?>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+
+      <div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;">
+        <button type="submit" class="button"><?= $escape($translate('Apply selected reorder')) ?></button>
+        <button type="submit" class="button" name="apply_all" value="1"><?= $escape($translate('Apply all eligible items')) ?></button>
+      </div>
+    </form>
+  </div>
+<?php endif; ?>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var toggleButton = document.getElementById('mof-toggle-select');
+  if (!toggleButton) {
+    return;
+  }
+
+  var allCheckboxes = Array.prototype.slice.call(
+    document.querySelectorAll('input[name="selected_item_ids[]"]')
+  );
+  var eligibleCheckboxes = allCheckboxes.filter(function (checkbox) {
+    return !checkbox.disabled;
+  });
+
+  if (!eligibleCheckboxes.length) {
+    toggleButton.disabled = true;
+    return;
+  }
+
+  var selectAllText = <?= json_encode((string) $translate('Select All')) ?>;
+  var deselectAllText = <?= json_encode((string) $translate('Deselect All')) ?>;
+
+  var updateToggleLabel = function () {
+    var allChecked = eligibleCheckboxes.every(function (checkbox) {
+      return checkbox.checked;
+    });
+    var label = allChecked ? deselectAllText : selectAllText;
+    toggleButton.setAttribute('title', label);
+    toggleButton.setAttribute('aria-label', label);
+  };
+
+  toggleButton.addEventListener('click', function () {
+    var allChecked = eligibleCheckboxes.every(function (checkbox) {
+      return checkbox.checked;
+    });
+    var nextState = !allChecked;
+    eligibleCheckboxes.forEach(function (checkbox) {
+      checkbox.checked = nextState;
+    });
+    updateToggleLabel();
+  });
+
+  eligibleCheckboxes.forEach(function (checkbox) {
+    checkbox.addEventListener('change', updateToggleLabel);
+  });
+
+  updateToggleLabel();
+});
+</script>
