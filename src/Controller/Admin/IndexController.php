@@ -248,6 +248,13 @@ class IndexController extends AbstractActionController {
         $primaryMedia = $entities[0] ?? NULL;
       }
       $item->setPrimaryMedia($primaryMedia);
+      // This controller writes the entities directly instead of going through
+      // the API, so nothing bumps the item timestamp the way
+      // AbstractEntityAdapter::updateTimestamps() would. Do it here: consumers
+      // that key off "modified" — notably the IIIF manifest cache, which would
+      // otherwise keep serving the previous canvas order — cannot see a reorder
+      // or a primary media change any other way.
+      $item->setModified(new \DateTime('now'));
       $updated++;
     }
 
