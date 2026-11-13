@@ -78,7 +78,17 @@ class IndexController extends AbstractActionController {
     $request = $this->getRequest();
     $isPost = method_exists($request, 'isPost') ? $request->isPost() : FALSE;
     $mode = trim((string) $this->params()->fromPost('mode', ''));
-    if ($isPost && $mode === 'preview') {
+    $isPreview = $isPost && $mode === 'preview';
+    if ($isPreview) {
+      // A preview changes no data, but it runs searches and fills the session,
+      // so it gets the same token check as apply.
+      $confirmForm->setData($this->params()->fromPost());
+      if (!$confirmForm->isValid()) {
+        $this->messenger()->addError($this->translate('Invalid CSRF token.'));
+        $isPreview = FALSE;
+      }
+    }
+    if ($isPreview) {
       $inputText = $this->mergeUploadText($inputText);
       $tokens = $this->parseIdentifiers($inputText);
       if (empty($tokens)) {

@@ -70,6 +70,9 @@ if (isset($confirmForm)) {
 <div class="mof-section mof-box">
   <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="mode" value="preview">
+    <?php if ($csrfName !== ''): ?>
+      <input type="hidden" name="<?= $escapeAttr($csrfName) ?>" value="<?= $escapeAttr($csrfValue) ?>">
+    <?php endif; ?>
     <div class="field">
       <div class="field-meta">
         <label for="mof-identifiers"><?= $escape($translate('Item identifiers list')) ?></label>

@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## 0.1.2 (2026-11-13)
+
+- Security: the preview step now checks the form token, as the apply step
+  already did. A preview changes no data, but it runs identifier searches and
+  stores its result in the session, so a request from another site could make
+  a signed-in administrator's browser start that work.
+
 ## 0.1.1 (2026-07-29)
 
 - Fixed: applying a reorder left the item's `modified` timestamp untouched, so
